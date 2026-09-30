@@ -1,0 +1,90 @@
+:root {
+  --bg: #fbf8f4;
+  --surface: #ffffff;
+  --text: #2b2622;
+  --muted: #7a7068;
+  --accent: #8a6d4b;
+  --accent-text: #ffffff;
+  --ok: #3f7d4e;
+  --error: #b3432f;
+  --border: #e8e1d8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.page {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+
+.hero { text-align: center; margin-bottom: 28px; }
+.eyebrow { margin: 0; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; font-size: 13px; }
+.hero h1 { margin: 4px 0 8px; font: 400 40px/1.1 Georgia, "Times New Roman", serif; }
+.lead { margin: 0; color: var(--muted); }
+
+.field { display: block; margin-bottom: 16px; }
+.field span { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+.field input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 16px; /* prevents iOS zoom on focus */
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.picker { display: block; cursor: pointer; }
+.picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.picker span {
+  display: block;
+  padding: 18px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.picker input:focus-visible + span { outline: 3px solid var(--text); outline-offset: 2px; }
+
+.notice {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fff4e0;
+  font-size: 14px;
+}
+
+.list { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 10px; }
+
+.item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.item-head { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-size { color: var(--muted); flex-shrink: 0; }
+.item progress { width: 100%; height: 6px; margin: 8px 0 4px; accent-color: var(--accent); }
+.item-status { font-size: 13px; color: var(--muted); }
+.item.done .item-status { color: var(--ok); }
+.item.error .item-status { color: var(--error); }
+.item button {
+  margin-top: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+}

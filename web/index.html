@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Fotos del casamiento</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Casamiento</p>
+      <h1 id="couple">Jesús &amp; Dana</h1>
+      <p class="lead">Compartí tus fotos y videos de la fiesta. Van directo al álbum de los novios.</p>
+    </header>
+
+    <label class="field">
+      <span>Tu nombre (opcional)</span>
+      <input id="guest-name" type="text" autocomplete="name" maxlength="60" placeholder="Ej: Tía Marta">
+    </label>
+
+    <label class="picker">
+      <input id="picker" type="file" multiple accept="image/*,video/*">
+      <span>Elegir fotos y videos</span>
+    </label>
+
+    <p id="notice" class="notice" hidden>Subiendo… no cierres esta pantalla ni bloquees el celular.</p>
+
+    <ul id="list" class="list" aria-live="polite"></ul>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
