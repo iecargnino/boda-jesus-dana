@@ -43,11 +43,11 @@ export async function uploadFile({
   sleep = defaultSleep,
   onProgress = () => {},
   chunkSize = CHUNK_SIZE,
-  maxAttempts = 5,
+  maxAttempts = 10,
   signal,
 }) {
   const total = file.size;
-  const openSession = () => init({ fileName: file.name, mimeType, size: total, guestName, origin });
+  const openSession = () => init({ fileName: file.name, mimeType, size: total, guestName, origin }, { signal });
 
   if (signal?.aborted) return CANCELLED;
   let session = await openSession();

@@ -187,3 +187,33 @@ test('returns cancelled when aborted while init is pending', async () => {
   assert.deepEqual(result, { ok: false, error: 'cancelled' });
   assert.equal(calls.length, 0);
 });
+
+test('retries 5xx responses with escalating backoff', async () => {
+  const sleeps = [];
+  const { fetchImpl } = scriptedFetch([res(503), res(308), res(503), res(308), res(200)]);
+  const result = await uploadFile({
+    file: makeFile(10), mimeType: 'video/mp4', init: okInit().init, fetchImpl, chunkSize: 16,
+    sleep: async (ms) => { sleeps.push(ms); },
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(sleeps, [1000, 2000]);
+});
+
+test('defaults to 10 attempts per chunk before giving up', async () => {
+  const failures = Array.from({ length: 50 }, () => new TypeError('offline'));
+  const { fetchImpl, calls } = scriptedFetch(failures);
+  const result = await uploadFile({ file: makeFile(10), mimeType: 'video/mp4', init: okInit().init, fetchImpl, sleep: noSleep });
+  assert.deepEqual(result, { ok: false, error: 'network' });
+  assert.equal(calls.filter((c) => !c.contentRange.startsWith('bytes */')).length, 10);
+});
+
+test('passes the signal to init on the first open and on re-init', async () => {
+  const controller = new AbortController();
+  const { fetchImpl } = scriptedFetch([res(410), res(200)]);
+  const seen = [];
+  const init = async (payload, options) => { seen.push(options); return { ok: true, uploadUrl: 'https://up/1' }; };
+  const result = await uploadFile({ file: makeFile(10), mimeType: 'video/mp4', init, fetchImpl, sleep: noSleep, signal: controller.signal });
+  assert.deepEqual(result, { ok: true });
+  assert.equal(seen.length, 2);
+  assert.ok(seen.every((o) => o.signal === controller.signal));
+});
