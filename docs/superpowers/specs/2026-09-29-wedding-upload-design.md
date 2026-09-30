@@ -117,7 +117,9 @@ Timestamp is the upload time in the event's local timezone.
 ## Handoff
 
 1. Build and test in the developer's account.
-2. Share the Apps Script project with Dana; she creates a deployment as herself and accepts
-   the permissions (guide covers the "unverified app" → Advanced → Go to project step).
+2. Dana creates her own Apps Script project (a copy of ours, or a new project with the same
+   `Code.gs` and `appsscript.json` pasted in), deploys it as herself, and accepts the
+   permissions (guide covers the "unverified app" → Advanced → Go to project step). Her copy
+   is fully owned by her, so "Execute as: Me" runs as Dana and uploads use her quota.
 3. Set her web app URL in `config.js` and redeploy the page (her folder is created on first upload).
 4. Generate the final QR pointing to the guest page URL.
