@@ -26,6 +26,7 @@ const init = createInitClient({ endpoint: INIT_ENDPOINT });
 let queue = Promise.resolve();
 let pending = 0;
 let wakeLock = null;
+let wakeLockRequesting = false;
 
 els.couple.textContent = COUPLE_NAMES;
 els.guestName.value = readGuestName();
@@ -126,12 +127,20 @@ function updateBusy() {
 }
 
 async function acquireWakeLock() {
-  if (wakeLock || !('wakeLock' in navigator)) return;
+  if (wakeLock || wakeLockRequesting || !('wakeLock' in navigator)) return;
+  wakeLockRequesting = true;
   try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; });
+    const sentinel = await navigator.wakeLock.request('screen');
+    if (pending === 0) {
+      sentinel.release(); // Uploads finished while the request was in flight.
+    } else {
+      wakeLock = sentinel;
+      sentinel.addEventListener('release', () => { wakeLock = null; });
+    }
   } catch {
     wakeLock = null; // Not allowed (e.g. low battery); the notice still warns the guest.
+  } finally {
+    wakeLockRequesting = false;
   }
 }
 
