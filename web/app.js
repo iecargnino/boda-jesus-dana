@@ -120,14 +120,17 @@ function enqueue(file, row, guestName) {
   pending++;
   updateBusy();
   setRow(row, { state: 'queued', status: 'En espera…', sent: 0, total: file.size });
-  const controller = new AbortController();
-  addCancel(row, controller);
-  queue = queue.then(() => runUpload(file, row, guestName, controller));
+  const item = { controller: new AbortController(), started: false, settled: false };
+  addCancel(file, row, guestName, item);
+  queue = queue.then(() => runUpload(file, row, guestName, item));
 }
 
-async function runUpload(file, row, guestName, controller) {
-  // A file cancelled while queued is skipped: no init, no network.
-  if (!controller.signal.aborted) setRow(row, { state: 'uploading', status: 'Subiendo…' });
+async function runUpload(file, row, guestName, item) {
+  // Cancelled while queued: already finalized by the Cancelar handler, so skip it entirely.
+  if (item.settled) return;
+  item.started = true;
+  const { controller } = item;
+  setRow(row, { state: 'uploading', status: 'Subiendo…' });
   const result = await uploadFile({
     file,
     mimeType: resolveMimeType(file),
@@ -147,6 +150,7 @@ async function runUpload(file, row, guestName, controller) {
     setRow(row, { state: 'error', status: ERROR_MESSAGES[result.error] ?? ERROR_MESSAGES.server });
     if (result.error !== 'invalid' && result.error !== 'no_space') addRetry(file, row, guestName);
   }
+  item.settled = true;
   pending--;
   updateBusy();
 }
@@ -170,15 +174,23 @@ function setRow(row, { state, status, sent, total }) {
   if (sent !== undefined && total) row.querySelector('progress').value = sent / total;
 }
 
-function addCancel(row, controller) {
+function addCancel(file, row, guestName, item) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'cancel';
   button.textContent = 'Cancelar';
   button.addEventListener('click', () => {
-    controller.abort();
+    item.controller.abort();
     button.remove();
-    setRow(row, { status: 'Cancelando…' });
+    if (item.started) {
+      setRow(row, { status: 'Cancelando…' }); // runUpload finalizes it once the request aborts.
+      return;
+    }
+    item.settled = true; // Still queued: finish it now; runUpload will skip it.
+    setRow(row, { state: 'cancelled', status: ERROR_MESSAGES.cancelled });
+    addRetry(file, row, guestName);
+    pending--;
+    updateBusy();
   });
   row.append(button);
 }
