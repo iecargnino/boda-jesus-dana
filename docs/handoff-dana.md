@@ -21,6 +21,9 @@ Te vamos a pasar dos textos para pegar, como archivos adjuntos o mensajes:
    en la lista de **Archivos**, ahora aparece `appsscript.json`. Hacé clic ahí, borrá todo
    su contenido, pegá el texto del archivo `appsscript.json` que te pasamos y
    **guardá con Ctrl+S**.
+   ⚠️ **No crees un archivo nuevo con el botón "+"**: ese botón agrega `.gs` al nombre y
+   aparece un error de sintaxis. Si te pasó, borrá ese archivo (tres puntos ⋮ → Eliminar)
+   y usá el `appsscript.json` que ya viene en la lista.
 6. Tocá **Implementar → Nueva implementación**. En el engranaje de "Seleccionar tipo",
    elegí **Aplicación web**.
    - Ejecutar como: **Yo**
