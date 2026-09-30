@@ -2,19 +2,28 @@ import {
   CHUNK_SIZE, chunkRange, contentRange, statusContentRange, parseRangeHeader, backoffDelay,
 } from './chunks.js';
 
-const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Resolves after ms, or early when the signal aborts.
+const defaultSleep = (ms, signal) => new Promise((resolve) => {
+  if (signal?.aborted) { resolve(); return; }
+  const onAbort = () => { clearTimeout(timer); resolve(); };
+  const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
+
+const CANCELLED = { ok: false, error: 'cancelled' };
 
 const isDone = (status) => status === 200 || status === 201;
 const isExpired = (status) => status === 404 || status === 410;
 const isRetryable = (status) => status >= 500 || status === 408 || status === 429;
 
 // Asks Drive how many bytes it has persisted. Returns 'done', an offset, or null if unknown.
-async function queryOffset(fetchImpl, uploadUrl, total) {
+async function queryOffset(fetchImpl, uploadUrl, total, signal) {
   try {
     const res = await fetchImpl(uploadUrl, {
       method: 'PUT',
       headers: { 'Content-Range': statusContentRange(total) },
       body: null,
+      signal,
     });
     if (isDone(res.status)) return 'done';
     if (res.status === 308) return parseRangeHeader(res.headers.get('Range'));
@@ -35,11 +44,14 @@ export async function uploadFile({
   onProgress = () => {},
   chunkSize = CHUNK_SIZE,
   maxAttempts = 5,
+  signal,
 }) {
   const total = file.size;
   const openSession = () => init({ fileName: file.name, mimeType, size: total, guestName, origin });
 
+  if (signal?.aborted) return CANCELLED;
   let session = await openSession();
+  if (signal?.aborted) return CANCELLED;
   if (!session.ok) return session;
 
   let uploadUrl = session.uploadUrl;
@@ -55,10 +67,12 @@ export async function uploadFile({
         method: 'PUT',
         headers: { 'Content-Range': contentRange(start, end, total) },
         body: file.slice(start, end + 1),
+        signal,
       });
     } catch {
       res = null;
     }
+    if (signal?.aborted) return CANCELLED;
 
     if (res && isDone(res.status)) {
       onProgress(total, total);
@@ -78,6 +92,7 @@ export async function uploadFile({
       if (restarted) return { ok: false, error: 'session_expired' };
       restarted = true;
       session = await openSession();
+      if (signal?.aborted) return CANCELLED;
       if (!session.ok) return session;
       uploadUrl = session.uploadUrl;
       offset = 0;
@@ -90,9 +105,11 @@ export async function uploadFile({
 
     attempts++;
     if (attempts >= maxAttempts) return { ok: false, error: 'network' };
-    await sleep(backoffDelay(attempts - 1));
+    await sleep(backoffDelay(attempts - 1), signal);
+    if (signal?.aborted) return CANCELLED;
 
-    const confirmed = await queryOffset(fetchImpl, uploadUrl, total);
+    const confirmed = await queryOffset(fetchImpl, uploadUrl, total, signal);
+    if (signal?.aborted) return CANCELLED;
     if (confirmed === 'done') {
       onProgress(total, total);
       return { ok: true };

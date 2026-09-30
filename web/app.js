@@ -11,6 +11,7 @@ const ERROR_MESSAGES = {
   session_expired: 'La subida se venció. Tocá Reintentar.',
   network: 'Problema de conexión. Tocá Reintentar.',
   server: 'Hubo un error en el servidor. Tocá Reintentar.',
+  cancelled: 'Cancelado.',
 };
 
 const els = {
@@ -119,21 +120,29 @@ function enqueue(file, row, guestName) {
   pending++;
   updateBusy();
   setRow(row, { state: 'queued', status: 'En espera…', sent: 0, total: file.size });
-  queue = queue.then(() => runUpload(file, row, guestName));
+  const controller = new AbortController();
+  addCancel(row, controller);
+  queue = queue.then(() => runUpload(file, row, guestName, controller));
 }
 
-async function runUpload(file, row, guestName) {
-  setRow(row, { state: 'uploading', status: 'Subiendo…' });
+async function runUpload(file, row, guestName, controller) {
+  // A file cancelled while queued is skipped: no init, no network.
+  if (!controller.signal.aborted) setRow(row, { state: 'uploading', status: 'Subiendo…' });
   const result = await uploadFile({
     file,
     mimeType: resolveMimeType(file),
     guestName,
     origin: location.origin,
     init,
+    signal: controller.signal,
     onProgress: (sent, total) => setRow(row, { sent, total }),
   });
+  row.querySelector('.cancel')?.remove();
   if (result.ok) {
     setRow(row, { state: 'done', status: '¡Listo! Gracias ♥' });
+  } else if (result.error === 'cancelled') {
+    setRow(row, { state: 'cancelled', status: ERROR_MESSAGES.cancelled });
+    addRetry(file, row, guestName);
   } else {
     setRow(row, { state: 'error', status: ERROR_MESSAGES[result.error] ?? ERROR_MESSAGES.server });
     if (result.error !== 'invalid' && result.error !== 'no_space') addRetry(file, row, guestName);
@@ -159,6 +168,19 @@ function setRow(row, { state, status, sent, total }) {
   if (state) row.className = `item ${state}`;
   if (status) row.querySelector('.item-status').textContent = status;
   if (sent !== undefined && total) row.querySelector('progress').value = sent / total;
+}
+
+function addCancel(row, controller) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'cancel';
+  button.textContent = 'Cancelar';
+  button.addEventListener('click', () => {
+    controller.abort();
+    button.remove();
+    setRow(row, { status: 'Cancelando…' });
+  });
+  row.append(button);
 }
 
 function addRetry(file, row, guestName) {

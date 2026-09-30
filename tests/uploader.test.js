@@ -14,10 +14,11 @@ function res(status, headers = {}) {
 function scriptedFetch(steps) {
   const calls = [];
   const fetchImpl = async (url, options) => {
-    calls.push({ url, contentRange: options.headers['Content-Range'], bodySize: options.body ? options.body.size : 0 });
+    calls.push({ url, contentRange: options.headers['Content-Range'], bodySize: options.body ? options.body.size : 0, signal: options.signal });
     const step = steps.shift();
     if (!step) throw new Error('unexpected extra request');
     if (step instanceof Error) throw step;
+    if (typeof step === 'function') return step();
     return step;
   };
   return { fetchImpl, calls };
@@ -130,4 +131,59 @@ test('rejects immediately on a non-retryable 4xx', async () => {
   const result = await uploadFile({ file: makeFile(10), mimeType: 'video/mp4', init: okInit().init, fetchImpl, sleep: noSleep });
   assert.deepEqual(result, { ok: false, error: 'rejected' });
   assert.equal(calls.length, 1);
+});
+
+test('returns cancelled without calling init when already aborted', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const { fetchImpl, calls } = scriptedFetch([]);
+  const { init, calls: initCalls } = okInit();
+  const result = await uploadFile({ file: makeFile(10), mimeType: 'video/mp4', init, fetchImpl, sleep: noSleep, signal: controller.signal });
+  assert.deepEqual(result, { ok: false, error: 'cancelled' });
+  assert.equal(initCalls.length, 0);
+  assert.equal(calls.length, 0);
+});
+
+test('aborts mid-upload and makes no further requests', async () => {
+  const controller = new AbortController();
+  const { fetchImpl, calls } = scriptedFetch([
+    res(308, { Range: 'bytes=0-3' }),
+    () => { controller.abort(); throw new DOMException('aborted', 'AbortError'); },
+  ]);
+  const result = await uploadFile({
+    file: makeFile(10), mimeType: 'video/mp4', init: okInit().init, fetchImpl, sleep: noSleep, chunkSize: 4, signal: controller.signal,
+  });
+  assert.deepEqual(result, { ok: false, error: 'cancelled' });
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((c) => c.contentRange !== 'bytes */10'));
+});
+
+test('stops during backoff without querying status', async () => {
+  const controller = new AbortController();
+  const { fetchImpl, calls } = scriptedFetch([new TypeError('network down')]);
+  const result = await uploadFile({
+    file: makeFile(10), mimeType: 'video/mp4', init: okInit().init, fetchImpl, chunkSize: 4, signal: controller.signal,
+    sleep: async () => { controller.abort(); },
+  });
+  assert.deepEqual(result, { ok: false, error: 'cancelled' });
+  assert.equal(calls.length, 1);
+});
+
+test('passes the signal to fetch', async () => {
+  const controller = new AbortController();
+  const { fetchImpl, calls } = scriptedFetch([res(200)]);
+  const result = await uploadFile({
+    file: makeFile(10), mimeType: 'video/mp4', init: okInit().init, fetchImpl, sleep: noSleep, chunkSize: 16, signal: controller.signal,
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls[0].signal, controller.signal);
+});
+
+test('returns cancelled when aborted while init is pending', async () => {
+  const controller = new AbortController();
+  const { fetchImpl, calls } = scriptedFetch([]);
+  const init = async () => { controller.abort(); return { ok: true, uploadUrl: 'https://up/1' }; };
+  const result = await uploadFile({ file: makeFile(10), mimeType: 'video/mp4', init, fetchImpl, sleep: noSleep, signal: controller.signal });
+  assert.deepEqual(result, { ok: false, error: 'cancelled' });
+  assert.equal(calls.length, 0);
 });
