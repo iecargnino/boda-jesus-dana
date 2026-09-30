@@ -122,37 +122,47 @@ function enqueue(file, row, guestName) {
   setRow(row, { state: 'queued', status: 'En espera…', sent: 0, total: file.size });
   const item = { controller: new AbortController(), started: false, settled: false };
   addCancel(file, row, guestName, item);
-  queue = queue.then(() => runUpload(file, row, guestName, item));
+  queue = queue.then(() => runUpload(file, row, guestName, item)).catch(console.error);
 }
 
 async function runUpload(file, row, guestName, item) {
   // Cancelled while queued: already finalized by the Cancelar handler, so skip it entirely.
   if (item.settled) return;
   item.started = true;
-  const { controller } = item;
-  setRow(row, { state: 'uploading', status: 'Subiendo…' });
-  const result = await uploadFile({
-    file,
-    mimeType: resolveMimeType(file),
-    guestName,
-    origin: location.origin,
-    init,
-    signal: controller.signal,
-    onProgress: (sent, total) => setRow(row, { sent, total }),
-  });
-  row.querySelector('.cancel')?.remove();
-  if (result.ok) {
-    setRow(row, { state: 'done', status: '¡Listo! Gracias ♥' });
-  } else if (result.error === 'cancelled') {
-    setRow(row, { state: 'cancelled', status: ERROR_MESSAGES.cancelled });
+  try {
+    const { controller } = item;
+    setRow(row, { state: 'uploading', status: 'Subiendo…' });
+    const result = await uploadFile({
+      file,
+      mimeType: resolveMimeType(file),
+      guestName,
+      origin: location.origin,
+      init,
+      signal: controller.signal,
+      onProgress: (sent, total) => setRow(row, { sent, total }),
+    });
+    row.querySelector('.cancel')?.remove();
+    if (result.ok) {
+      setRow(row, { state: 'done', status: '¡Listo! Gracias ♥' });
+    } else if (result.error === 'cancelled') {
+      setRow(row, { state: 'cancelled', status: ERROR_MESSAGES.cancelled });
+      addRetry(file, row, guestName);
+    } else {
+      setRow(row, { state: 'error', status: ERROR_MESSAGES[result.error] ?? ERROR_MESSAGES.server });
+      if (result.error !== 'invalid' && result.error !== 'no_space') addRetry(file, row, guestName);
+    }
+  } catch (error) {
+    // Never let an unexpected throw stall the queue: settle the row as an error the guest can retry.
+    console.error(error);
+    row.querySelector('.cancel')?.remove();
+    row.querySelector('button:not(.cancel)')?.remove();
+    setRow(row, { state: 'error', status: ERROR_MESSAGES.server });
     addRetry(file, row, guestName);
-  } else {
-    setRow(row, { state: 'error', status: ERROR_MESSAGES[result.error] ?? ERROR_MESSAGES.server });
-    if (result.error !== 'invalid' && result.error !== 'no_space') addRetry(file, row, guestName);
+  } finally {
+    item.settled = true;
+    pending--;
+    updateBusy();
   }
-  item.settled = true;
-  pending--;
-  updateBusy();
 }
 
 function createRow(file) {
