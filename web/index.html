@@ -15,15 +15,26 @@
       <p class="lead">Compartí tus fotos y videos de la fiesta. Van directo al álbum de los novios.</p>
     </header>
 
-    <label class="field">
-      <span>Tu nombre (opcional)</span>
-      <input id="guest-name" type="text" autocomplete="name" maxlength="60" placeholder="Ej: Tía Marta">
-    </label>
+    <form id="identity" class="step">
+      <h2>¿Quién sos?</h2>
+      <label class="field">
+        <span>Tu nombre o apodo</span>
+        <input id="guest-name" type="text" autocomplete="name" maxlength="60" placeholder="Ej: Tía Marta">
+      </label>
+      <label class="check">
+        <input id="guest-anonymous" type="checkbox">
+        <span>Prefiero subir sin nombre</span>
+      </label>
+      <button id="continue" class="primary" type="submit" disabled>Continuar</button>
+    </form>
 
-    <label class="picker">
-      <input id="picker" type="file" multiple accept="image/*,video/*">
-      <span>Elegir fotos y videos</span>
-    </label>
+    <section id="upload-step" class="step" hidden>
+      <p class="as-line">Subiendo como <strong id="guest-display"></strong> · <button id="change" class="link" type="button">Cambiar</button></p>
+      <label class="picker">
+        <input id="picker" type="file" multiple accept="image/*,video/*">
+        <span>Elegir fotos y videos</span>
+      </label>
+    </section>
 
     <p id="notice" class="notice" hidden>Subiendo… no cierres esta pantalla ni bloquees el celular.</p>
 

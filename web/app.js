@@ -1,6 +1,7 @@
 import { COUPLE_NAMES, INIT_ENDPOINT } from './config.js';
 import { createInitClient } from './lib/api.js';
 import { uploadFile } from './lib/uploader.js';
+import { GUEST_STORAGE_KEY, canContinue, resolveGuestName, displayGuestName, parseGuest, serializeGuest } from './lib/guest.js';
 import { formatBytes, isLargeFile, resolveMimeType } from './lib/format.js';
 
 const ERROR_MESSAGES = {
@@ -12,11 +13,15 @@ const ERROR_MESSAGES = {
   server: 'Hubo un error en el servidor. Tocá Reintentar.',
 };
 
-const GUEST_NAME_KEY = 'guestName';
-
 const els = {
   couple: document.querySelector('#couple'),
+  identity: document.querySelector('#identity'),
   guestName: document.querySelector('#guest-name'),
+  anonymous: document.querySelector('#guest-anonymous'),
+  continueBtn: document.querySelector('#continue'),
+  uploadStep: document.querySelector('#upload-step'),
+  display: document.querySelector('#guest-display'),
+  change: document.querySelector('#change'),
   picker: document.querySelector('#picker'),
   notice: document.querySelector('#notice'),
   list: document.querySelector('#list'),
@@ -29,8 +34,10 @@ let wakeLock = null;
 let wakeLockRequesting = false;
 
 els.couple.textContent = COUPLE_NAMES;
-els.guestName.value = readGuestName();
-els.guestName.addEventListener('change', () => writeGuestName(els.guestName.value.trim()));
+els.guestName.addEventListener('input', updateContinue);
+els.anonymous.addEventListener('change', onAnonymousToggle);
+els.identity.addEventListener('submit', onIdentitySubmit);
+els.change.addEventListener('click', showIdentityStep);
 els.picker.addEventListener('change', onFilesChosen);
 window.addEventListener('beforeunload', (event) => {
   if (pending > 0) event.preventDefault();
@@ -39,19 +46,64 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && pending > 0) acquireWakeLock();
 });
 
-function readGuestName() {
-  try { return localStorage.getItem(GUEST_NAME_KEY) ?? ''; } catch { return ''; }
+const stored = readGuest();
+if (stored) {
+  els.guestName.value = stored.name;
+  els.anonymous.checked = stored.anonymous;
+  els.guestName.disabled = stored.anonymous;
+  showUploadStep(stored);
+}
+updateContinue();
+
+function readGuest() {
+  try { return parseGuest(localStorage.getItem(GUEST_STORAGE_KEY)); } catch { return null; }
 }
 
-function writeGuestName(value) {
-  try { localStorage.setItem(GUEST_NAME_KEY, value); } catch { /* storage unavailable */ }
+function writeGuest(guest) {
+  try { localStorage.setItem(GUEST_STORAGE_KEY, serializeGuest(guest)); } catch { /* storage unavailable */ }
+}
+
+function currentGuest() {
+  return { name: els.guestName.value, anonymous: els.anonymous.checked };
+}
+
+function updateContinue() {
+  els.continueBtn.disabled = !canContinue(currentGuest());
+}
+
+function onAnonymousToggle() {
+  els.guestName.disabled = els.anonymous.checked;
+  if (els.anonymous.checked) els.guestName.value = '';
+  updateContinue();
+}
+
+function onIdentitySubmit(event) {
+  event.preventDefault();
+  const guest = currentGuest();
+  if (!canContinue(guest)) return;
+  writeGuest(guest);
+  showUploadStep(guest);
+  els.change.focus();
+}
+
+function showUploadStep(guest) {
+  els.display.textContent = displayGuestName(guest);
+  els.identity.hidden = true;
+  els.uploadStep.hidden = false;
+}
+
+function showIdentityStep() {
+  els.uploadStep.hidden = true;
+  els.identity.hidden = false;
+  (els.anonymous.checked ? els.anonymous : els.guestName).focus();
 }
 
 function onFilesChosen() {
+  const guestName = resolveGuestName(currentGuest());
   for (const file of els.picker.files) {
     if (file.size === 0) continue;
     if (isLargeFile(file.size) && !confirmLarge(file)) continue;
-    enqueue(file, createRow(file));
+    enqueue(file, createRow(file), guestName);
   }
   els.picker.value = '';
 }
@@ -63,19 +115,19 @@ function confirmLarge(file) {
   );
 }
 
-function enqueue(file, row) {
+function enqueue(file, row, guestName) {
   pending++;
   updateBusy();
   setRow(row, { state: 'queued', status: 'En espera…', sent: 0, total: file.size });
-  queue = queue.then(() => runUpload(file, row));
+  queue = queue.then(() => runUpload(file, row, guestName));
 }
 
-async function runUpload(file, row) {
+async function runUpload(file, row, guestName) {
   setRow(row, { state: 'uploading', status: 'Subiendo…' });
   const result = await uploadFile({
     file,
     mimeType: resolveMimeType(file),
-    guestName: els.guestName.value.trim(),
+    guestName,
     origin: location.origin,
     init,
     onProgress: (sent, total) => setRow(row, { sent, total }),
@@ -84,7 +136,7 @@ async function runUpload(file, row) {
     setRow(row, { state: 'done', status: '¡Listo! Gracias ♥' });
   } else {
     setRow(row, { state: 'error', status: ERROR_MESSAGES[result.error] ?? ERROR_MESSAGES.server });
-    if (result.error !== 'invalid' && result.error !== 'no_space') addRetry(file, row);
+    if (result.error !== 'invalid' && result.error !== 'no_space') addRetry(file, row, guestName);
   }
   pending--;
   updateBusy();
@@ -109,13 +161,13 @@ function setRow(row, { state, status, sent, total }) {
   if (sent !== undefined && total) row.querySelector('progress').value = sent / total;
 }
 
-function addRetry(file, row) {
+function addRetry(file, row, guestName) {
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = 'Reintentar';
   button.addEventListener('click', () => {
     button.remove();
-    enqueue(file, row);
+    enqueue(file, row, guestName);
   });
   row.append(button);
 }
